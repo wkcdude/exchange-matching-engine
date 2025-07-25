@@ -69,6 +69,20 @@ mod order_book {
                 order_status: OrderStatus::New,
             }
         }
+
+        pub fn refresh_order_status(&mut self) {
+            if self.remaining_quantity == 0.0 {
+                self.order_status = OrderStatus::Filled;
+            }
+
+            if self.remaining_quantity != 0.0 && self.remaining_quantity != self.initial_quantity {
+                self.order_status = OrderStatus::PartiallyFilled;
+            }
+
+            if self.remaining_quantity == self.initial_quantity {
+                self.order_status = OrderStatus::Open;
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -152,45 +166,37 @@ mod order_book {
                     }
                 }
 
-                if ordered.remaining_quantity == 0.0 {
-                    ordered.order_status = OrderStatus::Filled;
-                }
-
-                if ordered.remaining_quantity != 0.0 && (ordered.remaining_quantity != ordered.initial_quantity) {
-                    ordered.order_status = OrderStatus::PartiallyFilled;
-                }
-
-                if ordered.remaining_quantity == ordered.initial_quantity {
-                    ordered.order_status = OrderStatus::Open;
-                }
+                ordered.refresh_order_status();
             }
         }
 
         fn set_order(&mut self, ordered: &mut OrderRecord) {
+            match ordered.order_status {
+                OrderStatus::Filled => {
+                    return;
+                }
+                _ => {}
+            }
+
             let buy_entry = self.buy_orders.get_mut(&OrderedFloat(ordered.price));
             let sell_entry = self.sell_orders.get_mut(&OrderedFloat(ordered.price));
             if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
                 match ordered.order_side {
                     OrderSide::Buy => {
-                        if ordered.remaining_quantity != 0.0 {
-                            buy_entry.total_quantity =
-                                buy_entry.total_quantity + ordered.remaining_quantity;
-                            buy_entry.queue.push_back(ordered.clone());
-                        }
+                        buy_entry.total_quantity =
+                            buy_entry.total_quantity + ordered.remaining_quantity;
+                        buy_entry.queue.push_back(ordered.clone());
                     }
                     OrderSide::Sell => {
-                        if ordered.remaining_quantity != 0.0 {
-                            sell_entry.total_quantity =
-                                sell_entry.total_quantity + ordered.remaining_quantity;
-                            sell_entry.queue.push_back(ordered.clone());
-                        }
+                        sell_entry.total_quantity =
+                            sell_entry.total_quantity + ordered.remaining_quantity;
+                        sell_entry.queue.push_back(ordered.clone());
                     }
                 }
             }
         }
 
         pub fn create_order(&mut self, ordered: &mut OrderRecord) {
-            ordered.order_status = OrderStatus::Open;
             self.init_entry(ordered);
             self.match_order(ordered);
             self.set_order(ordered);
@@ -215,7 +221,7 @@ mod test {
                 9990.0,
                 130.0,
                 OrderType::LimitOrder,
-                OrderLifeTime::GoodTilCancel,
+                OrderLifeTime::GoodTilCancel
             )
         );
 
@@ -226,7 +232,7 @@ mod test {
                 9990.0,
                 130.0,
                 OrderType::LimitOrder,
-                OrderLifeTime::GoodTilCancel,
+                OrderLifeTime::GoodTilCancel
             )
         );
 
@@ -237,7 +243,7 @@ mod test {
                 9990.0,
                 50.0,
                 OrderType::LimitOrder,
-                OrderLifeTime::GoodTilCancel,
+                OrderLifeTime::GoodTilCancel
             )
         );
 

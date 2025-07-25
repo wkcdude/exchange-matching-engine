@@ -1,254 +1,67 @@
-mod order_book {
-    use ordered_float::OrderedFloat;
-    use std::collections::{ BTreeMap, VecDeque };
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub enum OrderType {
-        MarketOrder,
-        LimitOrder,
-    }
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub enum OrderSide {
-        Buy,
-        Sell,
-    }
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub enum OrderLifeTime {
-        GoodTilCancel,
-        FillOrKill,
-        ImmidiateOrCancel,
-    }
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub enum OrderStatus {
-        New,
-        Open,
-        PartiallyFilled,
-        Filled,
-        Canceled,
-        Rejected,
-        Expired,
-    }
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub struct OrderRecord {
-        pub order_side: OrderSide,
-        pub order_id: String,
-        pub price: f64,
-        pub initial_quantity: f64,
-        remaining_quantity: f64,
-        pub order_type: OrderType,
-        pub order_life_time: OrderLifeTime,
-        order_status: OrderStatus,
-    }
-
-    impl OrderRecord {
-        pub fn new(
-            order_side: OrderSide,
-            order_id: String,
-            price: f64,
-            initial_quantity: f64,
-            order_type: OrderType,
-            order_life_time: OrderLifeTime
-        ) -> Self {
-            OrderRecord {
-                order_side,
-                order_id,
-                price,
-                initial_quantity,
-                remaining_quantity: initial_quantity,
-                order_type,
-                order_life_time,
-                order_status: OrderStatus::New,
-            }
-        }
-
-        pub fn refresh_order_status(&mut self) {
-            if self.remaining_quantity == 0.0 {
-                self.order_status = OrderStatus::Filled;
-            }
-
-            if self.remaining_quantity != 0.0 && self.remaining_quantity != self.initial_quantity {
-                self.order_status = OrderStatus::PartiallyFilled;
-            }
-
-            if self.remaining_quantity == self.initial_quantity {
-                self.order_status = OrderStatus::Open;
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    #[derive(Clone)]
-    pub struct OrderEntry {
-        pub queue: VecDeque<OrderRecord>,
-        pub total_quantity: f64,
-    }
-
-    #[allow(dead_code)]
-    impl OrderEntry {
-        fn new() -> Self {
-            OrderEntry {
-                queue: VecDeque::new(),
-                total_quantity: 0.0,
-            }
-        }
-    }
-
-    #[allow(dead_code)]
-    pub struct OrderBook {
-        pub buy_orders: BTreeMap<OrderedFloat<f64>, OrderEntry>,
-        pub sell_orders: BTreeMap<OrderedFloat<f64>, OrderEntry>,
-    }
-
-    #[allow(dead_code)]
-    impl OrderBook {
-        pub fn new() -> Self {
-            OrderBook {
-                buy_orders: BTreeMap::new(),
-                sell_orders: BTreeMap::new(),
-            }
-        }
-
-        fn init_entry(&mut self, order_record: &mut OrderRecord) {
-            if !self.buy_orders.contains_key(&OrderedFloat(order_record.price)) {
-                self.buy_orders.insert(OrderedFloat(order_record.price), OrderEntry::new());
-            }
-
-            if !self.sell_orders.contains_key(&OrderedFloat(order_record.price)) {
-                self.sell_orders.insert(OrderedFloat(order_record.price), OrderEntry::new());
-            }
-        }
-
-        pub fn match_order(&mut self, ordered: &mut OrderRecord) {
-            let buy_entry = self.buy_orders.get_mut(&OrderedFloat(ordered.price));
-            let sell_entry = self.sell_orders.get_mut(&OrderedFloat(ordered.price));
-            if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
-                match ordered.order_side {
-                    OrderSide::Buy => {
-                        while sell_entry.total_quantity != 0.0 && ordered.remaining_quantity != 0.0 {
-                            if let Some(mut sell_order_record) = sell_entry.queue.pop_front() {
-                                sell_entry.total_quantity -= sell_order_record.remaining_quantity;
-                                ordered.remaining_quantity -= sell_order_record.remaining_quantity;
-
-                                if ordered.remaining_quantity < 0.0 {
-                                    sell_entry.total_quantity -= ordered.remaining_quantity;
-                                    sell_order_record.remaining_quantity =
-                                        -ordered.remaining_quantity;
-                                    sell_entry.queue.push_front(sell_order_record);
-                                    ordered.remaining_quantity = 0.0;
-                                }
-                            }
-                        }
-                    }
-                    OrderSide::Sell => {
-                        while buy_entry.total_quantity != 0.0 && ordered.remaining_quantity != 0.0 {
-                            if let Some(mut buy_order_record) = buy_entry.queue.pop_front() {
-                                buy_entry.total_quantity -= buy_order_record.remaining_quantity;
-                                ordered.remaining_quantity -= buy_order_record.remaining_quantity;
-
-                                if ordered.remaining_quantity < 0.0 {
-                                    buy_entry.total_quantity -= ordered.remaining_quantity;
-                                    buy_order_record.remaining_quantity =
-                                        -ordered.remaining_quantity;
-                                    buy_entry.queue.push_front(buy_order_record);
-                                    ordered.remaining_quantity = 0.0;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                ordered.refresh_order_status();
-            }
-        }
-
-        fn set_order(&mut self, ordered: &mut OrderRecord) {
-            match ordered.order_status {
-                OrderStatus::Filled => {
-                    return;
-                }
-                _ => {}
-            }
-
-            let buy_entry = self.buy_orders.get_mut(&OrderedFloat(ordered.price));
-            let sell_entry = self.sell_orders.get_mut(&OrderedFloat(ordered.price));
-            if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
-                match ordered.order_side {
-                    OrderSide::Buy => {
-                        buy_entry.total_quantity =
-                            buy_entry.total_quantity + ordered.remaining_quantity;
-                        buy_entry.queue.push_back(ordered.clone());
-                    }
-                    OrderSide::Sell => {
-                        sell_entry.total_quantity =
-                            sell_entry.total_quantity + ordered.remaining_quantity;
-                        sell_entry.queue.push_back(ordered.clone());
-                    }
-                }
-            }
-        }
-
-        pub fn create_order(&mut self, ordered: &mut OrderRecord) {
-            self.init_entry(ordered);
-            self.match_order(ordered);
-            self.set_order(ordered);
-        }
-
-        pub fn cancel_order(&mut self, order_record: OrderRecord) {}
-    }
-}
+mod orderbook;
 
 mod test {
-    use crate::order_book::*;
+    use crate::orderbook::*;
     use ordered_float::OrderedFloat;
 
     #[test]
     fn limit_order_test() {
         let mut orderbook = OrderBook::new();
 
-        orderbook.create_order(
-            &mut OrderRecord::new(
-                OrderSide::Buy,
-                "".to_string(),
-                9990.0,
-                130.0,
-                OrderType::LimitOrder,
-                OrderLifeTime::GoodTilCancel
-            )
-        );
+        let test_price = 9999.0;
 
         orderbook.create_order(
             &mut OrderRecord::new(
                 OrderSide::Buy,
-                "".to_string(),
-                9990.0,
+                "1".to_string(),
+                test_price,
                 130.0,
                 OrderType::LimitOrder,
                 OrderLifeTime::GoodTilCancel
             )
         );
+        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(test_price));
+        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(test_price));
+        if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
+            assert_eq!(buy_entry.queue.len(), 1);
+            assert_eq!(buy_entry.total_quantity, 130.0);
+
+            assert_eq!(sell_entry.queue.len(), 0);
+            assert_eq!(sell_entry.total_quantity, 0.0);
+        }
+
+        orderbook.create_order(
+            &mut OrderRecord::new(
+                OrderSide::Buy,
+                "2".to_string(),
+                test_price,
+                130.0,
+                OrderType::LimitOrder,
+                OrderLifeTime::GoodTilCancel
+            )
+        );
+        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(test_price));
+        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(test_price));
+        if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
+            assert_eq!(buy_entry.queue.len(), 2);
+            assert_eq!(buy_entry.total_quantity, 260.0);
+
+            assert_eq!(sell_entry.queue.len(), 0);
+            assert_eq!(sell_entry.total_quantity, 0.0);
+        }
 
         orderbook.create_order(
             &mut OrderRecord::new(
                 OrderSide::Sell,
-                "".to_string(),
-                9990.0,
+                "3".to_string(),
+                test_price,
                 50.0,
                 OrderType::LimitOrder,
                 OrderLifeTime::GoodTilCancel
             )
         );
-
-        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(9990.0));
-        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(9990.0));
+        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(test_price));
+        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(test_price));
         if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
             assert_eq!(buy_entry.queue.len(), 2);
             assert_eq!(buy_entry.total_quantity, 210.0);
@@ -256,5 +69,46 @@ mod test {
             assert_eq!(sell_entry.queue.len(), 0);
             assert_eq!(sell_entry.total_quantity, 0.0);
         }
+
+        orderbook.create_order(
+            &mut OrderRecord::new(
+                OrderSide::Sell,
+                "4".to_string(),
+                test_price,
+                80.0,
+                OrderType::LimitOrder,
+                OrderLifeTime::GoodTilCancel
+            )
+        );
+        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(test_price));
+        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(test_price));
+        if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
+            assert_eq!(buy_entry.queue.len(), 1);
+            assert_eq!(buy_entry.total_quantity, 130.0);
+
+            assert_eq!(sell_entry.queue.len(), 0);
+            assert_eq!(sell_entry.total_quantity, 0.0);
+        }
+
+        orderbook.cancel_order(
+            &mut OrderRecord::new(
+                OrderSide::Buy,
+                "2".to_string(),
+                test_price,
+                0.0,
+                OrderType::LimitOrder,
+                OrderLifeTime::GoodTilCancel
+            )
+        );
+        let buy_entry = orderbook.buy_orders.get(&OrderedFloat(test_price));
+        let sell_entry = orderbook.sell_orders.get(&OrderedFloat(test_price));
+        if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
+            assert_eq!(buy_entry.queue.len(), 0);
+            assert_eq!(buy_entry.total_quantity, 0.0);
+
+            assert_eq!(sell_entry.queue.len(), 0);
+            assert_eq!(sell_entry.total_quantity, 0.0);
+        }
+
     }
 }

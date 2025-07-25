@@ -84,16 +84,14 @@ mod order_book {
             if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
                 match ordered.order_side {
                     OrderSide::Buy => {
-                        while sell_entry.total_quantity <= 0.0 || ordered.remaining_quantity <= 0.0 {
+                        while (sell_entry.total_quantity != 0.0) && (ordered.remaining_quantity != 0.0) {
                             if let Some(mut sell_order_record) = sell_entry.queue.pop_front() {
                                 sell_entry.total_quantity -= sell_order_record.remaining_quantity;
                                 ordered.remaining_quantity -= sell_order_record.remaining_quantity;
 
                                 if ordered.remaining_quantity < 0.0 {
                                     sell_entry.total_quantity -= ordered.remaining_quantity;
-
-                                    sell_order_record.remaining_quantity -=
-                                        ordered.remaining_quantity;
+                                    sell_order_record.remaining_quantity = -ordered.remaining_quantity;
                                     sell_entry.queue.push_front(sell_order_record);
                                     ordered.remaining_quantity = 0.0;
                                 }
@@ -104,18 +102,14 @@ mod order_book {
                         }
                     }
                     OrderSide::Sell => {
-                        while buy_entry.total_quantity <= 0.0 || ordered.remaining_quantity <= 0.0 {                            
+                        while (buy_entry.total_quantity != 0.0) && (ordered.remaining_quantity != 0.0) {                            
                             if let Some(mut buy_order_record) = buy_entry.queue.pop_front() {
                                 buy_entry.total_quantity -= buy_order_record.remaining_quantity;
                                 ordered.remaining_quantity -= buy_order_record.remaining_quantity;
 
                                 if ordered.remaining_quantity < 0.0 {
                                     buy_entry.total_quantity -= ordered.remaining_quantity;
-                                    println!("{:?}", ordered.remaining_quantity);
-                                    println!("{:?}", buy_entry.total_quantity);
-
-                                    buy_order_record.remaining_quantity -=
-                                        ordered.remaining_quantity;
+                                    buy_order_record.remaining_quantity = -ordered.remaining_quantity;
                                     buy_entry.queue.push_front(buy_order_record);
                                     ordered.remaining_quantity = 0.0;
                                 }
@@ -149,7 +143,7 @@ mod order_book {
                     OrderSide::Sell => {
                         if ordered.remaining_quantity != 0.0 {
                             sell_entry.total_quantity =
-                                sell_entry.total_quantity + ordered.remaining_quantity;
+                            sell_entry.total_quantity + ordered.remaining_quantity;
                             sell_entry.queue.push_back(ordered.clone());
                         }
                     }
@@ -178,6 +172,18 @@ mod order_book {
 
         orderbook.create_order(
             &mut (OrderRecord {
+                order_side: OrderSide::Buy,
+                order_id: "".to_string(),
+                price: 9990.0,
+                initial_quantity: 130.0,
+                remaining_quantity: 130.0,
+                order_type: OrderType::LimitOrder,
+                order_life_time: OrderLifeTime::GoodTilCancel,
+            })
+        );
+
+        orderbook.create_order(
+            &mut (OrderRecord {
                 order_side: OrderSide::Sell,
                 order_id: "".to_string(),
                 price: 9990.0,
@@ -188,12 +194,11 @@ mod order_book {
             })
         );
 
-
         let buy_entry = orderbook.buy_orders.get(&OrderedFloat(9990.0));
         let sell_entry = orderbook.sell_orders.get(&OrderedFloat(9990.0));
         if let (Some(buy_entry), Some(sell_entry)) = (buy_entry, sell_entry) {
-            assert_eq!(buy_entry.queue.len(), 1);
-            assert_eq!(buy_entry.total_quantity, 30.0);
+            assert_eq!(buy_entry.queue.len(), 2);
+            assert_eq!(buy_entry.total_quantity, 160.0);
             
             assert_eq!(sell_entry.queue.len(), 0);
             assert_eq!(sell_entry.total_quantity, 0.0);

@@ -8,12 +8,13 @@ mod orderbook_test {
     #[test]
     fn limit_order_test() {
         let mut orderbook = OrderBook::new();
-
+        let ticker = "coin".to_string();
         let test_price = 9999.0;
 
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Buy,
             uuid::new_v4().to_string(),
+            ticker.clone(),
             test_price,
             130.0,
             OrderType::LimitOrder,
@@ -34,6 +35,7 @@ mod orderbook_test {
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Buy,
             cancel_order_id.clone(),
+            ticker.clone(),
             test_price,
             130.0,
             OrderType::LimitOrder,
@@ -53,6 +55,7 @@ mod orderbook_test {
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Sell,
             uuid::new_v4().to_string(),
+            ticker.clone(),
             test_price,
             50.0,
             OrderType::LimitOrder,
@@ -70,6 +73,7 @@ mod orderbook_test {
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Sell,
             uuid::new_v4().to_string(),
+            ticker.clone(),
             test_price,
             80.0,
             OrderType::LimitOrder,
@@ -88,6 +92,7 @@ mod orderbook_test {
         orderbook.cancel_order(&mut OrderRecord::new(
             OrderSide::Buy,
             cancel_order_id.clone(),
+            ticker.clone(),
             test_price,
             0.0,
             OrderType::LimitOrder,
@@ -106,6 +111,7 @@ mod orderbook_test {
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Buy,
             uuid::new_v4().to_string(),
+            ticker.clone(),
             test_price,
             100.0,
             OrderType::LimitOrder,
@@ -124,6 +130,7 @@ mod orderbook_test {
         orderbook.create_order(&mut OrderRecord::new(
             OrderSide::Sell,
             uuid::new_v4().to_string(),
+            ticker.clone(),
             test_price,
             120.0,
             OrderType::LimitOrder,

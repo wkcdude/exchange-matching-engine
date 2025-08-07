@@ -1,5 +1,5 @@
 use ordered_float::OrderedFloat;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque, HashMap};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -41,6 +41,7 @@ pub struct OrderRecord {
     pub order_side: OrderSide,
     pub order_id: String,
     pub price: f64,
+    pub ticker: String,
     pub initial_quantity: f64,
     pub remaining_quantity: f64,
     pub order_type: OrderType,
@@ -50,7 +51,7 @@ pub struct OrderRecord {
 
 #[allow(dead_code)]
 impl OrderRecord {
-    pub fn new( order_side: OrderSide, order_id: String, price: f64, initial_quantity: f64, order_type: OrderType, order_life_time: OrderLifeTime, ) -> Self {
+    pub fn new( order_side: OrderSide, order_id: String, ticker: String, price: f64, initial_quantity: f64, order_type: OrderType, order_life_time: OrderLifeTime) -> Self {
         OrderRecord {
             order_side,
             order_id,
@@ -60,6 +61,7 @@ impl OrderRecord {
             order_type,
             order_life_time,
             order_status: OrderStatus::New,
+            ticker: ticker,
         }
     }
 
@@ -91,6 +93,38 @@ impl OrderEntry {
         OrderEntry {
             queue: VecDeque::new(),
             total_quantity: 0.0,
+        }
+    }
+}
+
+pub struct MatchingEngine {
+    ticker_orderbook: HashMap<String, OrderBook>
+}
+
+impl MatchingEngine {
+    pub fn new() -> Self {
+        MatchingEngine{
+            ticker_orderbook: HashMap::new(),
+        }
+    }
+
+    fn init_entry(&mut self, incoming_order: &mut OrderRecord) {
+        if !self .ticker_orderbook.contains_key(&incoming_order.ticker) {
+            self.ticker_orderbook.insert(incoming_order.ticker.clone(), OrderBook::new());
+        }
+    }
+
+    pub fn create_order(&mut self, incoming_order: &mut OrderRecord) {
+        self.init_entry(incoming_order);
+        if let Some(orderbook) = self.ticker_orderbook.get_mut(&incoming_order.ticker) {
+            orderbook.create_order(incoming_order);
+        }
+    }
+
+    pub fn cancel_order(&mut self, incoming_order: &mut OrderRecord) {
+        self.init_entry(incoming_order);
+        if let Some(orderbook) = self.ticker_orderbook.get_mut(&incoming_order.ticker) {
+            orderbook.cancel_order(incoming_order);
         }
     }
 }
